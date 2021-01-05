@@ -69,6 +69,25 @@ def build_generator_ref(latent_dim, weight_init, **kwargs):
     return tf.keras.models.Model(noise, fake_output, name="generator")
 
 
+## train separately?
+def build_encoder_ref(latent_dim, weight_init, **kwargs):
+    f = [2**i for i in range(4)]
+    IMG_H = kwargs['IMG_H']
+    IMG_W = kwargs['IMG_W']
+    IMG_C = kwargs['IMG_C']
+    image_input = tf.keras.layers.Input(shape=(IMG_H, IMG_W, IMG_C))
+    x = image_input
+    filters = 64
+
+    for i in range(0, 4):
+        x = conv_block(x, num_filters=f[i] * filters, kernel_size=5, weight_init=weight_init, strides=2)
+
+    x = tf.keras.layers.Flatten()(x)
+    x = tf.keras.layers.Dense(latent_dim, use_bias=False)(x)
+
+    return tf.keras.models.Model(image_input, x, name="encoder")
+
+
 def build_discriminator_ref(weight_init, **kwargs):
     f = [2**i for i in range(4)]
     IMG_H = kwargs['IMG_H']
@@ -77,9 +96,6 @@ def build_discriminator_ref(weight_init, **kwargs):
     image_input = tf.keras.layers.Input(shape=(IMG_H, IMG_W, IMG_C))
     x = image_input
     filters = 64
-    output_strides = 16
-    h_output = IMG_H // output_strides
-    w_output = IMG_W // output_strides
 
     for i in range(0, 4):
         x = conv_block(x, num_filters=f[i] * filters, kernel_size=5, weight_init=weight_init, strides=2)
@@ -185,3 +201,67 @@ class GAN_old(tf.keras.models.Model):
         self.g_optimizer.apply_gradients(zip(grads, self.generator.trainable_weights))
 
         return {"d1_loss": d1_loss, "d2_loss": d2_loss, "g_loss": g_loss, "total":d1_loss+d2_loss+g_loss}
+
+
+class GAN_autoencoder(tf.keras.models.Model):
+    def __init__(self, discriminator, generator, encoder, latent_dim):
+        super(GAN_autoencoder, self).__init__()
+        self.discriminator = discriminator
+        self.generator = generator
+        self.encoder = encoder
+        self.latent_dim = latent_dim
+
+    def compile(self, d_optimizer, g_optimizer, e_optimizer, loss_fn, ae_loss_fn):
+        super(GAN_autoencoder, self).compile()
+        self.d_optimizer = d_optimizer
+        self.g_optimizer = g_optimizer
+        self.e_optimizer = e_optimizer
+        self.loss_fn = loss_fn
+        self.ae_loss_fn = ae_loss_fn
+
+    def train_step(self, real_images):
+        batch_size = tf.shape(real_images)[0]
+
+        for _ in range(2):
+            ## Train the discriminator
+            random_latent_vectors = tf.random.normal(shape=(batch_size, self.latent_dim))
+            generated_images = self.generator(random_latent_vectors)
+            generated_labels = tf.zeros((batch_size, 1))
+
+            with tf.GradientTape() as ftape:
+                predictions = self.discriminator(generated_images)
+                d1_loss = self.loss_fn(generated_labels, predictions)
+            grads = ftape.gradient(d1_loss, self.discriminator.trainable_weights)
+            self.d_optimizer.apply_gradients(zip(grads, self.discriminator.trainable_weights))
+
+            ## Train the discriminator
+            labels = tf.ones((batch_size, 1))
+
+            with tf.GradientTape() as rtape:
+                predictions = self.discriminator(real_images)
+                d2_loss = self.loss_fn(labels, predictions)
+            grads = rtape.gradient(d2_loss, self.discriminator.trainable_weights)
+            self.d_optimizer.apply_gradients(zip(grads, self.discriminator.trainable_weights))
+
+        ## Train the generator
+        random_latent_vectors = tf.random.normal(shape=(batch_size, self.latent_dim))
+        misleading_labels = tf.ones((batch_size, 1))
+
+        with tf.GradientTape() as gtape:
+            gen_samples = self.generator(random_latent_vectors)
+            predictions = self.discriminator(gen_samples)
+            g_loss = self.loss_fn(misleading_labels, predictions)
+        grads = gtape.gradient(g_loss, self.generator.trainable_weights)
+        self.g_optimizer.apply_gradients(zip(grads, self.generator.trainable_weights))
+
+        ## Train the encoder
+        with tf.GradientTape() as etape:
+            encoding_prediction = self.encoder(gen_samples)
+            e_loss = self.ae_loss_fn(random_latent_vectors, encoding_prediction)
+        grads = etape.gradient(e_loss, self.encoder.trainable_weights)
+        self.e_optimizer.apply_gradients(zip(grads, self.encoder.trainable_weights))
+
+        ## Add step for full stack autoencoding?
+
+        return {"d1_loss": d1_loss, "d2_loss": d2_loss, "g_loss": g_loss, "e_loss":e_loss, "total":d1_loss+d2_loss+g_loss}
+    

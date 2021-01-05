@@ -107,7 +107,8 @@ def save_plot_plt(examples, epoch, n):
     plt.close()
 
 
-def save_plot(examples, path, epoch, n):
+def save_plot(examples, path, epoch, n, size, plotName = None):
+    IMG_W, IMG_H, IMG_C = size
     dw = IMG_W+1
     dh = IMG_H+1
     canvas = np.zeros((dw*n, dh*n, IMG_C), dtype=np.float32)
@@ -120,5 +121,7 @@ def save_plot(examples, path, epoch, n):
     canvas = canvas.astype(np.uint8)
     if not os.path.exists(path):
         os.mkdir(path)
-    filename = f"{path}/generated_plot_epoch-{epoch+1}.png"
-    tf.io.write_file(filename, tf.io.encode_png(canvas))
+    if plotName:
+        filename = f"{path}/{plotName}-{epoch+1}.png"
+        tf.io.write_file(filename, tf.io.encode_png(canvas))
+    return canvas
