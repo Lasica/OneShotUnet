@@ -6,7 +6,7 @@ import numpy as np
 import cv2
 
 
-def progressBar(iterable, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = ""):
+def progressBar(iterable, prefix = '', suffix = '', decimals = 1, length = 100, fill = '█', printEnd = "", iterable_size=None):
     """
     Call in a loop to create terminal progress bar
     @params:
@@ -19,7 +19,10 @@ def progressBar(iterable, prefix = '', suffix = '', decimals = 1, length = 100, 
         fill        - Optional  : bar fill character (Str)
         printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
     """
-    total = len(iterable)
+    if iterable_size > 0:
+        total = iterable_size
+    else:
+        total = len(iterable)
 
     # Progress Bar Printing Function
     def printProgressBar (iteration):
@@ -36,7 +39,7 @@ def progressBar(iterable, prefix = '', suffix = '', decimals = 1, length = 100, 
         printProgressBar(i + 1)
     # Print New Line on Complete
     sys.stderr.flush()
-    print('d!')
+    #print('d!')
 
 
 def prepare_resized_dataset(METU_RAW_PATH, METU_DATASET_PATH):
@@ -46,7 +49,6 @@ def prepare_resized_dataset(METU_RAW_PATH, METU_DATASET_PATH):
         os.mkdir(METU_DATASET_PATH)
     for imgPath in progressBar(imgList, prefix = 'Progress:', suffix = 'Complete', length = 50):
         img = cv2.imread(f'{METU_RAW_PATH}/{imgPath}')
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         x,y,z = img.shape
 
         grCoord = max(x,y)
