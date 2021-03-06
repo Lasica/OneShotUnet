@@ -19,7 +19,7 @@ def progressBar(iterable, prefix = '', suffix = '', decimals = 1, length = 100, 
         fill        - Optional  : bar fill character (Str)
         printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
     """
-    if iterable_size > 0:
+    if iterable_size:
         total = iterable_size
     else:
         total = len(iterable)
@@ -42,27 +42,28 @@ def progressBar(iterable, prefix = '', suffix = '', decimals = 1, length = 100, 
     #print('d!')
 
 
-def prepare_resized_dataset(METU_RAW_PATH, METU_DATASET_PATH):
+def prepare_resized_dataset(METU_RAW_PATH, METU_DATASET_PATH, inputFilesList=None, xScale=128, yScale=128, margin=0):
     start_time = time.time()
-    imgList = os.listdir(METU_RAW_PATH)
+    imgList = inputFilesList or tf.data.Dataset.list_files(METU_RAW_PATH+"*")
     if not os.path.exists(METU_DATASET_PATH):
         os.mkdir(METU_DATASET_PATH)
     for imgPath in progressBar(imgList, prefix = 'Progress:', suffix = 'Complete', length = 50):
-        img = cv2.imread(f'{METU_RAW_PATH}/{imgPath}')
+        img = cv2.imread(imgPath)
         x,y,z = img.shape
 
         grCoord = max(x,y)
-        X = int(np.round(x/(grCoord/128)))
-        Y = int(np.round(y/(grCoord/128)))
-        whiteImg = np.ones((128,128,3))*255
+        X = int(np.round(x/(grCoord/(xScale-2*margin))))
+        Y = int(np.round(y/(grCoord/(yScale-2*margin))))
+        whiteImg = np.ones((xScale,yScale,3))*255
         rescImg = cv2.resize(img, dsize=(Y, X), interpolation=cv2.INTER_CUBIC)
         #rescImg = rescale(rescImg)
-        middleX = (128-X)//2
-        middleY = (128-Y)//2
+        middleX = (xScale-X)//2
+        middleY = (yScale-Y)//2
         
         whiteImg[middleX:middleX+X, middleY:middleY+Y] = rescImg[:,:]
-        if not os.path.exists(f"{METU_DATASET_PATH}/{imgPath}"):
-            cv2.imwrite(f"{METU_DATASET_PATH}/{imgPath}", whiteImg)
+        save_path = f"{METU_DATASET_PATH}/{os.path.basename(imgPath)}"
+        if not os.path.exists(save_path):
+            cv2.imwrite(save_path, whiteImg)
 
     end_time = time.time()
 
@@ -127,3 +128,13 @@ def save_plot(examples, path, epoch, n, size, plotName = None):
         filename = f"{path}/{plotName}-{epoch+1}.png"
         tf.io.write_file(filename, tf.io.encode_png(canvas))
     return canvas
+
+
+def tf_db_to_array(tfdb, tfdb_size):
+    shape = tf.shape(next(iter(tfdb.take(1))))
+    batch_size = shape[0]
+    my_array = np.empty(tuple([tfdb_size, *shape[1:]]))
+    for i, el in enumerate(progressBar(iter(tfdb), iterable_size = (tfdb_size + batch_size-1)//batch_size)): 
+        t = i*batch_size
+        my_array[t:t+el.shape[0], :] = el
+    return my_array
