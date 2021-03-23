@@ -138,3 +138,10 @@ def tf_db_to_array(tfdb, tfdb_size):
         t = i*batch_size
         my_array[t:t+el.shape[0], :] = el
     return my_array
+
+
+def describe(x):
+    try:
+        return f'{x.shape}'
+    except AttributeError:
+        return f"{'[' + ', '.join([describe(q) for q in x]) + ']'}"
